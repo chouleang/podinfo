@@ -10,6 +10,10 @@ pipeline {
         GKE_ZONE = "asia-southeast1-a"
         PROJECT_ID = "it-enviroment"
         NAMESPACE = "podinfo"
+        
+        // Set PATH globally for all stages
+        CUSTOM_BIN_PATH = "${WORKSPACE}/bin"
+        PATH = "${CUSTOM_BIN_PATH}:${PATH}"
     }
     
     triggers {
@@ -25,33 +29,34 @@ pipeline {
             }
         }
         
-        stage('Install Tools - No Root') {
+        stage('Install Tools') {
             steps {
                 sh '''
-                    echo "📦 Installing tools without root access..."
+                    echo "📦 Installing tools..."
                     
                     # Create bin directory in workspace
                     mkdir -p bin
-                    export PATH="$PWD/bin:$PATH"
                     
-                    # Install kubectl to workspace bin directory
+                    # Install kubectl
                     echo "Installing kubectl..."
                     curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
                     chmod +x kubectl
-                    mv kubectl bin/kubectl
+                    mv kubectl bin/
                     
-                    # Install gcloud CLI
-                    echo "Installing gcloud CLI..."
-                    curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz
-                    tar -xf google-cloud-cli-linux-x86_64.tar.gz
-                    ./google-cloud-sdk/install.sh --quiet --path-update false
-                    ln -s $PWD/google-cloud-sdk/bin/gcloud bin/gcloud
-                    ln -s $PWD/google-cloud-sdk/bin/gsutil bin/gsutil
+                    # Install gke-gcloud-auth-plugin (required for GKE)
+                    echo "Installing gke-gcloud-auth-plugin..."
+                    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+                    chmod +x kubectl
+                    mv kubectl bin/
                     
-                    # Verify installations
-                    echo "✅ Tools installed successfully:"
-                    bin/kubectl version --client
-                    bin/gcloud --version
+                    # Install gcloud components
+                    echo "Installing gcloud components..."
+                    gcloud components install kubectl gke-gcloud-auth-plugin --quiet || true
+                    
+                    echo "✅ Tools installed successfully"
+                    echo "PATH: $PATH"
+                    which kubectl || echo "kubectl not in PATH"
+                    which gcloud || echo "gcloud not in PATH"
                 '''
             }
         }        
@@ -59,6 +64,7 @@ pipeline {
             steps {
                 sh '''
                     echo "🧪 Running tests..."
+                    echo "Current PATH: $PATH"
                     if [ -d "go" ]; then
                         cd go
                         go test ./... -v
@@ -122,9 +128,9 @@ pipeline {
                     withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_CREDENTIALS')]) {
                         sh """
                             echo "🚀 Deploying to GKE..."
-                            
-                            # Add our installed tools to PATH
-                            export PATH="$PWD/bin:$PATH"
+                            echo "Current PATH: $PATH"
+                            echo "kubectl path: $(which kubectl)"
+                            echo "gcloud path: $(which gcloud)"
                             
                             gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
                             gcloud container clusters get-credentials \${GKE_CLUSTER} --zone \${GKE_ZONE} --project \${PROJECT_ID}
@@ -159,9 +165,7 @@ pipeline {
                 script {
                     withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_CREDENTIALS')]) {
                         sh """
-                            # Add our installed tools to PATH
-                            export PATH="$PWD/bin:$PATH"
-                            
+                            echo "🔍 Running smoke test..."
                             gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
                             gcloud container clusters get-credentials \${GKE_CLUSTER} --zone \${GKE_ZONE} --project \${PROJECT_ID}
                             
@@ -187,17 +191,12 @@ pipeline {
             sh '''
                 echo "🧹 Cleaning up..."
                 docker system prune -f || true
-                # Clean up downloaded tools
-                rm -rf bin google-cloud-cli-linux-x86_64.tar.gz google-cloud-sdk kubectl || true
             '''
         }
         success {
             script {
                 withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_CREDENTIALS')]) {
                     sh """
-                        # Add our installed tools to PATH
-                        export PATH="$PWD/bin:$PATH"
-                        
                         gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
                         gcloud container clusters get-credentials \${GKE_CLUSTER} --zone \${GKE_ZONE} --project \${PROJECT_ID}
                         SERVICE_IP=\$(kubectl get service podinfo -n \${NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
