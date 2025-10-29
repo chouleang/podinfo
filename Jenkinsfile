@@ -86,63 +86,63 @@ pipeline {
             }
         }
         
-        // stage('Deploy to GKE') {
-        //     steps {
-        //         script {
-        //             withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_CREDENTIALS')]) {
-        //                 sh """
-        //                     echo "🚀 Deploying to GKE..."
-        //                     gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
-        //                     gcloud container clusters get-credentials \${GKE_CLUSTER} --zone \${GKE_ZONE} --project \${PROJECT_ID}
+        stage('Deploy to GKE') {
+            steps {
+                script {
+                    withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_CREDENTIALS')]) {
+                        sh """
+                            echo "🚀 Deploying to GKE..."
+                            gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
+                            gcloud container clusters get-credentials \${GKE_CLUSTER} --zone \${GKE_ZONE} --project \${PROJECT_ID}
                             
-        //                     # Create namespace if not exists
-        //                     kubectl create namespace \${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                            # Create namespace if not exists
+                            kubectl create namespace \${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                             
-        //                     # Update deployment with custom image if built, otherwise use official
-        //                     if [ -f "Dockerfile" ]; then
-        //                         echo "🔄 Using custom built image"
-        //                         kubectl set image deployment/podinfo podinfo=${DOCKER_IMAGE}:\${BUILD_ID} -n \${NAMESPACE} --record
-        //                     else
-        //                         echo "🔄 Using official PodInfo image"
-        //                         kubectl set image deployment/podinfo podinfo=ghcr.io/stefanprodan/podinfo:6.5.2 -n \${NAMESPACE} --record
-        //                     fi
+                            # Update deployment with custom image if built, otherwise use official
+                            if [ -f "Dockerfile" ]; then
+                                echo "🔄 Using custom built image"
+                                kubectl set image deployment/podinfo podinfo=${DOCKER_IMAGE}:\${BUILD_ID} -n \${NAMESPACE} --record
+                            else
+                                echo "🔄 Using official PodInfo image"
+                                kubectl set image deployment/podinfo podinfo=ghcr.io/stefanprodan/podinfo:6.5.2 -n \${NAMESPACE} --record
+                            fi
                             
-        //                     # Apply all Kubernetes manifests
-        //                     kubectl apply -f k8s/ -n \${NAMESPACE}
+                            # Apply all Kubernetes manifests
+                            kubectl apply -f k8s/ -n \${NAMESPACE}
                             
-        //                     # Wait for rollout to complete
-        //                     kubectl rollout status deployment/podinfo -n \${NAMESPACE} --timeout=300s
+                            # Wait for rollout to complete
+                            kubectl rollout status deployment/podinfo -n \${NAMESPACE} --timeout=300s
                             
-        //                     echo "✅ Deployment completed!"
-        //                 """
-        //             }
-        //         }
-        //     }
-        // }
+                            echo "✅ Deployment completed!"
+                        """
+                    }
+                }
+            }
+        }
         
-        // stage('Smoke Test') {
-        //     steps {
-        //         script {
-        //             withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_CREDENTIALS')]) {
-        //                 sh """
-        //                     gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
-        //                     gcloud container clusters get-credentials \${GKE_CLUSTER} --zone \${GKE_ZONE} --project \${PROJECT_ID}
+        stage('Smoke Test') {
+            steps {
+                script {
+                    withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_CREDENTIALS')]) {
+                        sh """
+                            gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
+                            gcloud container clusters get-credentials \${GKE_CLUSTER} --zone \${GKE_ZONE} --project \${PROJECT_ID}
                             
-        //                     # Get service endpoint
-        //                     SERVICE_IP=\$(kubectl get service podinfo -n \${NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-        //                     echo "🌐 Testing PodInfo at: http://\${SERVICE_IP}"
+                            # Get service endpoint
+                            SERVICE_IP=\$(kubectl get service podinfo -n \${NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+                            echo "🌐 Testing PodInfo at: http://\${SERVICE_IP}"
                             
-        //                     # Wait for service to be ready and test endpoints
-        //                     timeout 120 bash -c 'until curl -f http://\${SERVICE_IP}/healthz; do sleep 5; done'
-        //                     curl -f http://\${SERVICE_IP}/readyz
-        //                     curl -f http://\${SERVICE_IP}/version
+                            # Wait for service to be ready and test endpoints
+                            timeout 120 bash -c 'until curl -f http://\${SERVICE_IP}/healthz; do sleep 5; done'
+                            curl -f http://\${SERVICE_IP}/readyz
+                            curl -f http://\${SERVICE_IP}/version
                             
-        //                     echo "✅ Smoke test passed! PodInfo is running correctly."
-        //                 """
-        //             }
-        //         }
-        //     }
-        // }
+                            echo "✅ Smoke test passed! PodInfo is running correctly."
+                        """
+                    }
+                }
+            }
+        }
     }
     
     post {
@@ -152,25 +152,25 @@ pipeline {
                 docker system prune -f || true
             '''
         }
-        // success {
-        //     script {
-        //         withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_CREDENTIALS')]) {
-        //             sh """
-        //                 gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
-        //                 gcloud container clusters get-credentials \${GKE_CLUSTER} --zone \${GKE_ZONE} --project \${PROJECT_ID}
-        //                 SERVICE_IP=\$(kubectl get service podinfo -n \${NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-        //             """
-        //         }
+        success {
+            script {
+                withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_CREDENTIALS')]) {
+                    sh """
+                        gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
+                        gcloud container clusters get-credentials \${GKE_CLUSTER} --zone \${GKE_ZONE} --project \${PROJECT_ID}
+                        SERVICE_IP=\$(kubectl get service podinfo -n \${NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+                    """
+                }
                 
-        //         // Send notification
-        //         echo "🎉 Pipeline SUCCESS!"
-        //         echo "📦 Image: ${DOCKER_IMAGE}:${env.BUILD_ID}"
-        //         echo "🌐 URL: http://${SERVICE_IP}"
-        //         echo "📊 Metrics: http://${SERVICE_IP}/metrics"
-        //     }
-        // }
-        // failure {
-        //     echo "❌ Pipeline FAILED - Check Jenkins logs for details"
-        // }
+                // Send notification
+                echo "🎉 Pipeline SUCCESS!"
+                echo "📦 Image: ${DOCKER_IMAGE}:${env.BUILD_ID}"
+                echo "🌐 URL: http://${SERVICE_IP}"
+                echo "📊 Metrics: http://${SERVICE_IP}/metrics"
+            }
+        }
+        failure {
+            echo "❌ Pipeline FAILED - Check Jenkins logs for details"
+        }
     }
 }
