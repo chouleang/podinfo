@@ -27,3 +27,4 @@ cue/go.sum
 .notation/podinfo.csr
 .notation/podinfo.key
 jenkins-gke.json
+jenkins-gke.json
