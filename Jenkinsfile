@@ -71,6 +71,7 @@ pipeline {
                     )]) {
                         sh """
                             echo "📦 Pushing to Docker Hub..."
+                            apt install kubectl
                             docker login -u \$DOCKER_USER -p \$DOCKER_PASS
                             
                             if [ -f "Dockerfile" ]; then
