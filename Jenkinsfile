@@ -1,5 +1,5 @@
 pipeline {
-    agent none // No global agent
+    agent none
     
     environment {
         DOCKER_REGISTRY = "chouleangma"
@@ -11,57 +11,60 @@ pipeline {
     }
     
     stages {
-        // STAGE 1: CI - Build and Test in Docker Container
-        stage('CI - Build and Test') {
-            agent {
-                docker {
-                    image 'golang:1.21-alpine'
-                    args '--privileged -v /var/run/docker.sock:/var/run/docker.sock'
-                }
-            }
+        // STAGE 1: CI - Build using host Docker with BuildKit
+        stage('CI - Build with BuildKit') {
+            agent any  // Uses host Jenkins directly
             environment {
                 DOCKER_BUILDKIT = "1"
             }
             steps {
                 checkout scm
                 sh '''
-                    echo "🏗️ CI Phase: Building and Testing..."
+                    echo "🏗️ CI Phase: Building with host Docker + BuildKit..."
                     cd go
                     
-                    # Run tests
+                    # Run tests using host Go
                     echo "🧪 Running tests..."
                     go test ./... -v
                     go vet ./...
                     
-                    # Build with BuildKit
-                    echo "🔨 Building Docker image..."
+                    # Build with BuildKit using host Docker
+                    echo "🔨 Building Docker image with BuildKit..."
                     docker build \\
                         --tag ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${BUILD_ID} \\
                         --tag ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest \\
                         --progress=plain \\
+                        --build-arg BUILDKIT_INLINE_CACHE=1 \\
                         .
                     
-                    echo "✅ CI phase completed"
+                    echo "✅ Build completed with BuildKit"
                 '''
             }
             post {
                 success {
-                    sh '''
-                        echo "📦 Pushing to Docker Hub..."
-                        docker login -u $DOCKER_USER -p $DOCKER_PASS
-                        docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${BUILD_ID}
-                        docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest
-                        echo "✅ Images pushed to Docker Hub"
-                    '''
+                    withCredentials([usernamePassword(
+                        credentialsId: 'docker-hub-credentials',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )]) {
+                        sh '''
+                            echo "📦 Pushing to Docker Hub..."
+                            docker login -u $DOCKER_USER -p $DOCKER_PASS
+                            docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${BUILD_ID}
+                            docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest
+                            echo "✅ Images pushed to Docker Hub"
+                        '''
+                    }
                 }
             }
         }
         
-        // STAGE 2: CD - Deploy to GKE in Google Cloud SDK Container
+        // STAGE 2: CD - Deploy using Docker agent with GCP tools
         stage('CD - Deploy to GKE') {
             agent {
                 docker {
                     image 'google/cloud-sdk:alpine'
+                    reuseNode true  // Runs on same host, but in container
                     args '--entrypoint='
                 }
             }
@@ -101,18 +104,16 @@ pipeline {
             }
         }
         
-        // STAGE 3: Verification
+        // STAGE 3: Verification (optional - can use host or container)
         stage('Verify Deployment') {
-            agent {
-                docker {
-                    image 'google/cloud-sdk:alpine'
-                    args '--entrypoint='
-                }
-            }
+            agent any  // Use host Jenkins for verification
             steps {
                 script {
                     withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_CREDENTIALS')]) {
                         sh """
+                            echo "🔍 Verifying deployment from host..."
+                            
+                            # Use host's gcloud and kubectl (if installed)
                             gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
                             gcloud container clusters get-credentials ${GKE_CLUSTER} --zone ${GKE_ZONE} --project ${PROJECT_ID}
                             
@@ -124,13 +125,7 @@ pipeline {
                             
                             if [ -n "\$SERVICE_IP" ]; then
                                 echo "🎉 PodInfo is available at: http://\${SERVICE_IP}"
-                                
-                                # Test endpoints using curl (install if needed)
-                                apk add --no-cache curl
                                 curl -f http://\${SERVICE_IP}/healthz && echo " ✅ Health check passed"
-                                curl -f http://\${SERVICE_IP}/readyz && echo " ✅ Readiness check passed"
-                                
-                                echo ""
                                 echo "📋 Deployment Summary:"
                                 echo "🌐 URL: http://\${SERVICE_IP}"
                                 echo "🐳 Image: ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${BUILD_ID}"
@@ -146,6 +141,7 @@ pipeline {
     
     post {
         always {
+            sh 'docker system prune -f || true'
             echo "🏁 Pipeline execution completed"
         }
         success {
