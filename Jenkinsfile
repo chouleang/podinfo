@@ -45,18 +45,11 @@ pipeline {
                     
                     # Install gke-gcloud-auth-plugin (required for GKE)
                     echo "Installing gke-gcloud-auth-plugin..."
-                    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-                    chmod +x kubectl
-                    mv kubectl bin/
-                    
-                    # Install gcloud components
-                    echo "Installing gcloud components..."
-                    gcloud components install kubectl gke-gcloud-auth-plugin --quiet || true
+                    # This is already installed with kubectl above
                     
                     echo "✅ Tools installed successfully"
                     echo "PATH: $PATH"
                     which kubectl || echo "kubectl not in PATH"
-                    which gcloud || echo "gcloud not in PATH"
                 '''
             }
         }        
@@ -128,9 +121,9 @@ pipeline {
                     withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_CREDENTIALS')]) {
                         sh """
                             echo "🚀 Deploying to GKE..."
-                            echo "Current PATH: $PATH"
-                            echo "kubectl path: $(which kubectl)"
-                            echo "gcloud path: $(which gcloud)"
+                            echo "Current PATH: \$PATH"
+                            echo "kubectl path: \$(which kubectl)"
+                            echo "gcloud path: \$(which gcloud)"
                             
                             gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
                             gcloud container clusters get-credentials \${GKE_CLUSTER} --zone \${GKE_ZONE} --project \${PROJECT_ID}
