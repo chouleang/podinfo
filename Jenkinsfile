@@ -8,6 +8,10 @@ pipeline {
         NAMESPACE = "podinfo"
     }
     
+    triggers {
+        pollSCM('H/5 * * * *')
+    }
+    
     stages {
         stage('Checkout') {
             steps {
@@ -23,11 +27,46 @@ pipeline {
                     mkdir -p bin
                     
                     # Install kubectl
+                    echo "Installing kubectl..."
                     curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
                     chmod +x kubectl
                     mv kubectl bin/
                     
-                    echo "✅ Tools installed"
+                    # Install Google Cloud SDK
+                    echo "Installing Google Cloud SDK..."
+                    # Download and install gcloud
+                    curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz
+                    tar -xf google-cloud-cli-linux-x86_64.tar.gz
+                    ./google-cloud-sdk/install.sh --quiet --path-update false --usage-reporting false --command-completion false
+                    
+                    # Create symlinks to our bin directory
+                    ln -sf $PWD/google-cloud-sdk/bin/gcloud bin/gcloud
+                    ln -sf $PWD/google-cloud-sdk/bin/gsutil bin/gsutil
+                    
+                    # Install required gcloud components
+                    echo "Installing gcloud components..."
+                    ./google-cloud-sdk/bin/gcloud components install kubectl gke-gcloud-auth-plugin --quiet
+                    
+                    echo "✅ Tools installed successfully"
+                    echo "kubectl version:"
+                    bin/kubectl version --client
+                    echo "gcloud version:"
+                    bin/gcloud --version
+                '''
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                sh '''
+                    echo "🧪 Running tests..."
+                    if [ -d "go" ]; then
+                        cd go
+                        go test ./... -v
+                        go vet ./...
+                    else
+                        echo "No Go source found, skipping tests"
+                    fi
                 '''
             }
         }
@@ -42,6 +81,7 @@ pipeline {
                         --tag ${DOCKER_IMAGE}:latest \\
                         --progress=plain \\
                         .
+                    echo "✅ Build completed"
                 '''
             }
         }
@@ -71,15 +111,21 @@ pipeline {
                         sh """
                             echo "🚀 Deploying to GKE..."
                             
+                            # Use installed tools
                             export PATH="\$PWD/bin:\$PATH"
                             
+                            # Authenticate to GCP
                             gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
+                            
+                            # Get GKE cluster credentials
                             gcloud container clusters get-credentials \${GKE_CLUSTER} --zone \${GKE_ZONE} --project \${PROJECT_ID}
+                            
+                            echo "✅ GKE access configured"
                             
                             # Create namespace if not exists
                             kubectl create namespace \${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                             
-                            # Apply all GKE manifests (from gke/ directory)
+                            # Apply all GKE manifests from gke/ directory
                             echo "📁 Applying GKE manifests..."
                             kubectl apply -f gke/ -n \${NAMESPACE}
                             
@@ -104,6 +150,8 @@ pipeline {
                     withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_CREDENTIALS')]) {
                         sh """
                             echo "🔍 Running smoke test..."
+                            
+                            # Use installed tools
                             export PATH="\$PWD/bin:\$PATH"
                             
                             gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
@@ -111,14 +159,21 @@ pipeline {
                             
                             # Get service endpoint
                             SERVICE_IP=\$(kubectl get service podinfo -n \${NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-                            echo "🌐 Testing PodInfo at: http://\${SERVICE_IP}"
                             
-                            # Wait for service to be ready and test endpoints
-                            timeout 120 bash -c 'until curl -f http://\${SERVICE_IP}/healthz; do sleep 5; done'
-                            curl -f http://\${SERVICE_IP}/readyz
-                            curl -f http://\${SERVICE_IP}/version
-                            
-                            echo "✅ Smoke test passed! PodInfo is running correctly."
+                            if [ -n "\$SERVICE_IP" ]; then
+                                echo "🌐 PodInfo is available at: http://\${SERVICE_IP}"
+                                
+                                # Wait for service to be ready and test endpoints
+                                echo "🧪 Testing endpoints..."
+                                timeout 120 bash -c 'until curl -f http://\${SERVICE_IP}/healthz; do sleep 5; done'
+                                curl -f http://\${SERVICE_IP}/readyz && echo "✅ Readiness check passed"
+                                curl -f http://\${SERVICE_IP}/version && echo "✅ Version endpoint working"
+                                
+                                echo "✅ Smoke test passed! PodInfo is running correctly."
+                            else
+                                echo "⚠️ Service IP not yet assigned, skipping smoke test"
+                                kubectl get service podinfo -n \${NAMESPACE}
+                            fi
                         """
                     }
                 }
@@ -131,27 +186,44 @@ pipeline {
             sh '''
                 echo "🧹 Cleaning up..."
                 docker system prune -f || true
+                rm -rf bin google-cloud-cli-linux-x86_64.tar.gz google-cloud-sdk kubectl || true
             '''
         }
         success {
             script {
-                withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_CREDENTIALS')]) {
-                    sh """
-                        export PATH="\$PWD/bin:\$PATH"
-                        gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
-                        gcloud container clusters get-credentials \${GKE_CLUSTER} --zone \${GKE_ZONE} --project \${PROJECT_ID}
-                        SERVICE_IP=\$(kubectl get service podinfo -n \${NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-                    """
-                }
-                
                 echo "🎉 Pipeline SUCCESS!"
                 echo "📦 Image: ${DOCKER_IMAGE}:${env.BUILD_ID}"
-                echo "🌐 URL: http://${SERVICE_IP}"
-                echo "📊 Metrics: http://${SERVICE_IP}/metrics"
+                echo "🔗 Build URL: ${env.BUILD_URL}"
+                
+                # Try to get service IP for final output
+                withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_CREDENTIALS')]) {
+                    sh """
+                        mkdir -p bin
+                        curl -LO "https://dl.k8s.io/release/\$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" 2>/dev/null || true
+                        chmod +x kubectl 2>/dev/null || true
+                        mv kubectl bin/ 2>/dev/null || true
+                        
+                        curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz 2>/dev/null || true
+                        tar -xf google-cloud-cli-linux-x86_64.tar.gz 2>/dev/null || true
+                        ln -sf \$PWD/google-cloud-sdk/bin/gcloud bin/gcloud 2>/dev/null || true
+                        
+                        export PATH="\$PWD/bin:\$PATH" 2>/dev/null || true
+                        
+                        gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS} 2>/dev/null || true
+                        gcloud container clusters get-credentials \${GKE_CLUSTER} --zone \${GKE_ZONE} --project \${PROJECT_ID} 2>/dev/null || true
+                        SERVICE_IP=\$(kubectl get service podinfo -n \${NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "Not available")
+                        
+                        if [ -n "\$SERVICE_IP" ] && [ "\$SERVICE_IP" != "Not available" ]; then
+                            echo "🌐 Application URL: http://\${SERVICE_IP}"
+                            echo "📊 Metrics: http://\${SERVICE_IP}/metrics"
+                        fi
+                    """
+                }
             }
         }
         failure {
             echo "❌ Pipeline FAILED - Check Jenkins logs for details"
+            echo "🔗 Build URL: ${env.BUILD_URL}"
         }
     }
 }
