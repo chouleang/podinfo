@@ -24,22 +24,27 @@ pipeline {
                 sh 'echo "📦 Building commit: $(git log --oneline -n 1)"'
             }
         }
-    stage('Install kubectl') {
+            stage('Install Tools - No Root') {
             steps {
                 sh '''
-                    echo "📦 Installing kubectl..."
-                    # Download and install kubectl
+                    echo "📦 Installing tools without root access..."
+                    
+                    # Create bin directory in workspace
+                    mkdir -p bin
+                    export PATH="$PWD/bin:$PATH"
+                    
+                    # Install kubectl to workspace bin directory
+                    echo "Installing kubectl..."
                     curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-                    sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+                    chmod +x kubectl
+                    mv kubectl bin/kubectl
                     
                     # Verify installation
-                    kubectl version --client
-                    echo "✅ kubectl installed successfully"
+                    bin/kubectl version --client
+                    echo "✅ Tools installed successfully"
                 '''
             }
-        }
-
-        
+        }        
         stage('Test') {
             steps {
                 sh '''
