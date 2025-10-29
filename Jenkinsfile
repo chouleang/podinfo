@@ -34,7 +34,6 @@ pipeline {
                     
                     # Install Google Cloud SDK
                     echo "Installing Google Cloud SDK..."
-                    # Download and install gcloud
                     curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz
                     tar -xf google-cloud-cli-linux-x86_64.tar.gz
                     ./google-cloud-sdk/install.sh --quiet --path-update false --usage-reporting false --command-completion false
@@ -111,29 +110,22 @@ pipeline {
                         sh """
                             echo "🚀 Deploying to GKE..."
                             
-                            # Use installed tools
                             export PATH="\$PWD/bin:\$PATH"
                             
-                            # Authenticate to GCP
                             gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
                             
-                            # Get GKE cluster credentials
                             gcloud container clusters get-credentials \${GKE_CLUSTER} --zone \${GKE_ZONE} --project \${PROJECT_ID}
                             
                             echo "✅ GKE access configured"
                             
-                            # Create namespace if not exists
                             kubectl create namespace \${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                             
-                            # Apply all GKE manifests from gke/ directory
                             echo "📁 Applying GKE manifests..."
                             kubectl apply -f gke/ -n \${NAMESPACE}
                             
-                            # Update deployment with new image
                             echo "🔄 Updating deployment with new image..."
                             kubectl set image deployment/podinfo podinfo=${DOCKER_IMAGE}:\${BUILD_ID} -n \${NAMESPACE} --record
                             
-                            # Wait for rollout to complete
                             echo "⏳ Waiting for deployment to be ready..."
                             kubectl rollout status deployment/podinfo -n \${NAMESPACE} --timeout=300s
                             
@@ -151,19 +143,16 @@ pipeline {
                         sh """
                             echo "🔍 Running smoke test..."
                             
-                            # Use installed tools
                             export PATH="\$PWD/bin:\$PATH"
                             
                             gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
                             gcloud container clusters get-credentials \${GKE_CLUSTER} --zone \${GKE_ZONE} --project \${PROJECT_ID}
                             
-                            # Get service endpoint
                             SERVICE_IP=\$(kubectl get service podinfo -n \${NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
                             
                             if [ -n "\$SERVICE_IP" ]; then
                                 echo "🌐 PodInfo is available at: http://\${SERVICE_IP}"
                                 
-                                # Wait for service to be ready and test endpoints
                                 echo "🧪 Testing endpoints..."
                                 timeout 120 bash -c 'until curl -f http://\${SERVICE_IP}/healthz; do sleep 5; done'
                                 curl -f http://\${SERVICE_IP}/readyz && echo "✅ Readiness check passed"
@@ -195,7 +184,6 @@ pipeline {
                 echo "📦 Image: ${DOCKER_IMAGE}:${env.BUILD_ID}"
                 echo "🔗 Build URL: ${env.BUILD_URL}"
                 
-                # Try to get service IP for final output
                 withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_CREDENTIALS')]) {
                     sh """
                         mkdir -p bin
