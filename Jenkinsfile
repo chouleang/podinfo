@@ -98,7 +98,7 @@ post {
     success {
         script {
             // Only trigger CD for main branch or based on your strategy
-            if (env.BRANCH_NAME == 'main') {
+#            if (env.BRANCH_NAME == 'main') {
                 build job: 'podinfo-cd-pipeline',
                       wait: false,
                       parameters: [
@@ -109,7 +109,7 @@ post {
                         string(name: 'GIT_BRANCH', value: "main"),
                         string(name: 'MANIFESTS_PATH', value: ".")  // YAML files in root
                       ]
-            }
+ #           }
         }
     }
 }
