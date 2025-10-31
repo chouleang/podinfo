@@ -97,17 +97,20 @@ pipeline {
 post {
     success {
         script {
-            // Only trigger CD for specific branches
-            
-                build job: 'podinfo-cd-pipeline', 
+            // Only trigger CD for main branch or based on your strategy
+            if (env.BRANCH_NAME == 'main') {
+                build job: 'podinfo-cd-pipeline',
                       wait: false,
                       parameters: [
                         string(name: 'DOCKER_IMAGE', value: "${DOCKER_IMAGE}"),
                         string(name: 'IMAGE_TAG', value: "${env.BUILD_ID}"),
-                        string(name: 'NAMESPACE', value: "${NAMESPACE}")
+                        string(name: 'NAMESPACE', value: "${NAMESPACE}"),
+                        string(name: 'GIT_REPO', value: "https://github.com/chouleang/podinfo-gke.git"),
+                        string(name: 'GIT_BRANCH', value: "main"),
+                        string(name: 'MANIFESTS_PATH', value: ".")  // YAML files in root
                       ]
             }
-        
+        }
     }
 }
 }
