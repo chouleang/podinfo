@@ -93,13 +93,21 @@ pipeline {
         
     }
     
-    post {
-        always {
-            sh '''
-                echo "🧹 Cleaning up..."
-                docker system prune -f || true
-            '''
+    // Add this to your post-success section
+post {
+    success {
+        script {
+            // Only trigger CD for specific branches
+            if (env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'develop') {
+                build job: 'podinfo-cd-pipeline', 
+                      wait: false,
+                      parameters: [
+                        string(name: 'DOCKER_IMAGE', value: "${DOCKER_IMAGE}"),
+                        string(name: 'IMAGE_TAG', value: "${env.BUILD_ID}"),
+                        string(name: 'NAMESPACE', value: "${NAMESPACE}")
+                      ]
+            }
         }
-        
     }
+}
 }
