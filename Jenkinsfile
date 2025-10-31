@@ -98,7 +98,7 @@ post {
     success {
         script {
             // Only trigger CD for specific branches
-            if (env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'develop') {
+            
                 build job: 'podinfo-cd-pipeline', 
                       wait: false,
                       parameters: [
@@ -107,7 +107,7 @@ post {
                         string(name: 'NAMESPACE', value: "${NAMESPACE}")
                       ]
             }
-        }
+        
     }
 }
 }
