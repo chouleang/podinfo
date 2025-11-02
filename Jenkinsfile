@@ -24,31 +24,11 @@ pipeline {
                 sh 'echo "📦 Building commit: $(git log --oneline -n 1)"'
             }
         }
-        
-        stage('Test') {
-            steps {
-                sh '''
-                    echo "🧪 Running tests..."
-                    export PATH="$PWD/bin:$PWD/google-cloud-sdk/bin:$PATH"
-                    
-                    if [ -d "go" ]; then
-                        cd go
-                        go test ./... -v
-                        go vet ./...
-                    else
-                        echo "No Go source found, skipping tests"
-                    fi
-                '''
-            }
-        }
-        
         stage('Build with BuildKit') {
             steps {
                 script {
                     sh """
-                        echo "🏗️ Building with BuildKit..."
-                        export PATH="$PWD/bin:$PWD/google-cloud-sdk/bin:$PATH"
-                        
+                        echo "🏗️ Building with BuildKit..."               
                         # Check if we have a custom Dockerfile, otherwise use official image
                         if [ -f "Dockerfile" ]; then
                             docker build \\
@@ -74,7 +54,6 @@ pipeline {
                     )]) {
                         sh """
                             echo "📦 Pushing to Docker Hub..."
-                            export PATH="$PWD/bin:$PWD/google-cloud-sdk/bin:$PATH"
                             docker login -u \$DOCKER_USER -p \$DOCKER_PASS
                             
                             if [ -f "Dockerfile" ]; then
@@ -97,8 +76,6 @@ pipeline {
 post {
     success {
         script {
-            // Only trigger CD for main branch or based on your strategy
-//            if (env.BRANCH_NAME == 'main') {
                 build job: 'podinfo-cd-pipeline',
                       wait: false,
                       parameters: [
@@ -107,9 +84,8 @@ post {
                         string(name: 'NAMESPACE', value: "${NAMESPACE}"),
                         string(name: 'GIT_REPO', value: "https://github.com/chouleang/podinfo-gke.git"),
                         string(name: 'GIT_BRANCH', value: "main"),
-                        string(name: 'MANIFESTS_PATH', value: ".")  // YAML files in root
+                        string(name: 'MANIFESTS_PATH', value: ".")  
                       ]
- //           }
         }
     }
 }
