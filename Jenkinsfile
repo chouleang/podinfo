@@ -31,7 +31,8 @@ pipeline {
                         echo "🏗️ Building with BuildKit..."               
                         # Check if we have a custom Dockerfile, otherwise use official image
                         if [ -f "Dockerfile" ]; then
-                            docker build \\
+                            #docker build \\
+			     DOCKER_BUILDKIT=1 docker build \\
                                 --tag ${DOCKER_IMAGE}:\${BUILD_ID} \\
                                 --tag ${DOCKER_IMAGE}:latest \\
                                 --progress=plain \\
@@ -78,7 +79,7 @@ post {
         script {
                 sh '''
                     echo "remove docker image for saving space on local"
-                    docker rmi $(docker image ls -q) || true
+                    docker image prune -f
                 '''
                 build job: 'podinfo-cd-pipeline',
                       wait: false,

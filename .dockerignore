@@ -1,0 +1,11 @@
+.git
+.github
+.gitignore
+Dockerfile*
+Makefile
+**/*_test.go
+node_modules
+bin
+obj
+dist
+build

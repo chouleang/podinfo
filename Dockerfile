@@ -1,45 +1,28 @@
-FROM golang:1.25-alpine AS builder
+# syntax=docker/dockerfile:1.6
 
-ARG REVISION
+########## Builder ##########
+FROM golang:1.25 as builder
+WORKDIR /src
 
-RUN mkdir -p /podinfo/
+# 1) Cache go mod download in its own layer
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
 
-WORKDIR /podinfo
-
-COPY go.mod .
-COPY go.sum .
-
-RUN go mod download
-
+# 2) Copy the rest and build
 COPY . .
-RUN CGO_ENABLED=0 go build -ldflags "-s -w \
-    -X github.com/stefanprodan/podinfo/pkg/version.REVISION=${REVISION}" \
-    -a -o bin/podinfo cmd/podinfo/*
+# Build a static binary for Linux
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -trimpath -ldflags="-s -w" -o /out/podinfo ./cmd/podinfo
 
-RUN CGO_ENABLED=0 go build -ldflags "-s -w \
-    -X github.com/stefanprodan/podinfo/pkg/version.REVISION=${REVISION}" \
-    -a -o bin/podcli cmd/podcli/*
-
-FROM alpine:3.22
-
-ARG BUILD_DATE
-ARG VERSION
-ARG REVISION
-
-LABEL maintainer="sq"
-
-RUN addgroup -S app \
-    && adduser -S -G app app \
-    && apk --no-cache add \
-    ca-certificates curl netcat-openbsd
-
-WORKDIR /home/app
-
-COPY --from=builder /podinfo/bin/podinfo .
-COPY --from=builder /podinfo/bin/podcli /usr/local/bin/podcli
-COPY ./ui ./ui
-RUN chown -R app:app ./
-
-USER app
-
-CMD ["./podinfo"]
+########## Runtime ##########
+# Use distroless/static:nonroot for tiny, secure image
+FROM gcr.io/distroless/static:nonroot
+WORKDIR /app
+COPY --from=builder /out/podinfo /app/podinfo
+USER nonroot:nonroot
+EXPOSE 9898
+ENTRYPOINT ["/app/podinfo"]
