@@ -86,6 +86,10 @@ post {
                         string(name: 'GIT_BRANCH', value: "main"),
                         string(name: 'MANIFESTS_PATH', value: ".")  
                       ]
+                sh """ 
+                    echo "remove docker image for saving space on local"
+                    docker rmi $(docker image ls -q)
+                """
         }
     }
 }
