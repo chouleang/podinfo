@@ -86,10 +86,7 @@ post {
                       parameters: [
                         string(name: 'DOCKER_IMAGE', value: "${DOCKER_IMAGE}"),
                         string(name: 'IMAGE_TAG', value: "${env.BUILD_ID}"),
-                        string(name: 'NAMESPACE', value: "${NAMESPACE}"),
-                        string(name: 'GIT_REPO', value: "https://github.com/chouleang/podinfo-gke.git"),
-                        string(name: 'GIT_BRANCH', value: "main"),
-                        string(name: 'MANIFESTS_PATH', value: ".")  
+                        string(name: 'NAMESPACE', value: "${NAMESPACE}")
                       ]
                 
         }
