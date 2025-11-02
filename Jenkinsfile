@@ -76,10 +76,10 @@ pipeline {
 post {
     success {
         script {
-                sh """ 
+                sh '''
                     echo "remove docker image for saving space on local"
                     docker rmi $(docker image ls -q) || true
-                """
+                '''
                 build job: 'podinfo-cd-pipeline',
                       wait: false,
                       parameters: [
